@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#183a35">
+  <meta name="description" content="法律 RAG 评测工作台 MVP，展示检索、引用与幻觉控制评估流程。">
+  <title>循证台 | 法律 RAG 评测</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #f4f5f1;
+      --surface: #fff;
+      --ink: #202a29;
+      --muted: #66716d;
+      --line: #d9dfd9;
+      --green: #176b55;
+      --green-soft: #e2f1e9;
+      --coral: #be563e;
+      --coral-soft: #f8e9e3;
+      --gold: #a87819;
+      --gold-soft: #f6efd9;
+      --nav: #183a35;
+      --serif: "Source Serif 4", "Noto Serif SC", Georgia, serif;
+      --sans: "Noto Sans SC", "Microsoft YaHei", sans-serif;
+      font-family: var(--sans);
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+      font-variant-numeric: tabular-nums;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font-size: 14px; line-height: 1.65; }
+    a { color: inherit; }
+    button, a, summary { -webkit-tap-highlight-color: transparent; }
+    :focus-visible { outline: 3px solid #d59e32; outline-offset: 3px; }
+
+    .topbar { min-height: 58px; background: var(--nav); color: #f6f5ed; display: flex; align-items: center; }
+    .topbar-inner { width: min(1440px, 100%); margin: 0 auto; padding: 0 36px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+    .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; font-weight: 700; letter-spacing: 0; }
+    .brand-mark { width: 27px; height: 27px; display: grid; place-items: center; border: 1px solid #9ec8b8; color: #cce9db; font: 16px var(--serif); }
+    .brand-sub { color: #afc4bb; font-size: 12px; font-weight: 400; }
+    .top-nav { display: flex; align-items: center; gap: 26px; color: #c1d0c9; font-size: 13px; }
+    .top-nav a { text-decoration: none; min-height: 44px; display: inline-flex; align-items: center; border-bottom: 2px solid transparent; }
+    .top-nav a:hover, .top-nav a.active { color: #fff; border-color: #92c2ac; }
+    .top-meta { color: #b8c8c0; font-size: 12px; white-space: nowrap; }
+
+    main { width: min(1440px, 100%); margin: 0 auto; padding: 34px 36px 72px; }
+    .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding-bottom: 22px; border-bottom: 1px solid var(--line); }
+    .eyebrow { margin: 0 0 7px; color: var(--green); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { margin-bottom: 5px; font: 34px/1.2 var(--serif); letter-spacing: 0; }
+    .subtitle { margin: 0; color: var(--muted); font-size: 13px; }
+    .head-right { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; color: var(--muted); font-size: 12px; }
+    .demo-label { display: inline-flex; align-items: center; gap: 7px; color: #80570e; background: var(--gold-soft); padding: 5px 9px; font-size: 11px; font-weight: 700; }
+    .demo-label::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--gold); }
+
+    .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-bottom: 1px solid var(--line); padding: 18px 0 20px; }
+    .metric { min-height: 80px; padding: 4px 22px; border-left: 1px solid var(--line); }
+    .metric:first-child { padding-left: 0; border-left: 0; }
+    .metric-label { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; }
+    .metric-help { width: 15px; height: 15px; display: inline-grid; place-items: center; border: 1px solid #b6c0bb; border-radius: 50%; color: #52615b; font-size: 10px; text-decoration: none; }
+    .metric-value { display: flex; align-items: baseline; gap: 9px; margin-top: 4px; font: 30px/1.15 var(--serif); }
+    .metric-value small { font: 12px var(--sans); color: var(--muted); }
+    .delta { color: var(--green); font: 700 11px var(--sans); }
+    .metric-note { margin-top: 3px; color: var(--muted); font-size: 11px; }
+
+    .section { padding: 28px 0; border-bottom: 1px solid var(--line); }
+    .section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; margin-bottom: 17px; }
+    .section-kicker { margin: 0 0 3px; color: var(--green); font-size: 11px; font-weight: 700; }
+    h2 { margin: 0; font: 24px/1.3 var(--serif); }
+    h3 { margin: 0 0 8px; font-size: 14px; }
+    .section-note { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+    .text-link { color: var(--green); font-size: 12px; font-weight: 700; text-decoration-thickness: 1px; text-underline-offset: 3px; white-space: nowrap; }
+
+    .workbench { display: grid; grid-template-columns: minmax(0, 1.04fr) minmax(0, .96fr); border: 1px solid var(--line); background: var(--surface); }
+    .case-pane { padding: 22px 24px; min-width: 0; }
+    .case-pane + .case-pane { border-left: 1px solid var(--line); background: #fbfcfa; }
+    .case-meta { display: flex; justify-content: space-between; align-items: center; gap: 12px; color: var(--muted); font-size: 11px; }
+    .case-id { color: var(--ink); font-weight: 700; }
+    .status { padding: 3px 7px; font-size: 10px; font-weight: 700; white-space: nowrap; }
+    .status.fail { color: #963e2c; background: var(--coral-soft); }
+    .status.pass { color: #155940; background: var(--green-soft); }
+    .case-question { margin: 18px 0 16px; font: 21px/1.55 var(--serif); }
+    .data-label { margin: 0 0 7px; color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
+    blockquote { margin: 0; padding: 12px 14px; border-left: 2px solid var(--green); background: #f2f6f2; color: #384541; font: 14px/1.8 var(--serif); }
+    .citation { display: block; margin-top: 8px; color: var(--green); font: 11px/1.5 var(--sans); }
+    .answer { color: #48534f; font-size: 13px; line-height: 1.85; }
+    .answer p { margin-bottom: 12px; }
+    mark { padding: 1px 3px; color: #8b3827; background: #f8dfd7; }
+    .trace { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 16px; }
+    .trace span { padding: 4px 7px; border: 1px solid var(--line); color: #56625d; font-size: 10px; }
+    .trace .bad-tag { border-color: #e4b8ab; color: #963e2c; background: #fff8f5; }
+    .case-controls { display: flex; gap: 7px; margin: 18px 0 0; padding-top: 13px; border-top: 1px solid var(--line); }
+    .control-label { display: inline-flex; align-items: center; min-height: 38px; padding: 0 11px; border: 1px solid var(--line); color: #46524d; font-size: 11px; cursor: pointer; }
+    .control-label:hover { border-color: var(--green); color: var(--green); }
+    .control-label.primary { border-color: var(--green); color: #fff; background: var(--green); }
+    .control-label.primary:hover { background: #0d5844; }
+    .case-controls input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+
+    .filter-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .filter-row input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+    .filter-row label { display: inline-flex; align-items: center; min-height: 34px; padding: 0 10px; border: 1px solid var(--line); color: #5d6964; font-size: 11px; cursor: pointer; }
+    .filter-row input:checked + label { border-color: var(--nav); color: #fff; background: var(--nav); }
+    .filter-row input:focus-visible + label { outline: 3px solid #d59e32; outline-offset: 3px; }
+    .cases { border-top: 1px solid var(--line); }
+    .case-row { display: grid; grid-template-columns: 86px minmax(0, 1fr) 120px 78px; gap: 16px; align-items: center; padding: 14px 8px; border-bottom: 1px solid var(--line); }
+    .case-row:hover { background: rgba(255,255,255,.66); }
+    .case-row[hidden] { display: none; }
+    .row-id, .row-domain { color: var(--muted); font-size: 11px; }
+    .row-question { overflow: hidden; font: 15px/1.5 var(--serif); text-overflow: ellipsis; white-space: nowrap; }
+    .row-result { text-align: right; font-size: 11px; font-weight: 700; }
+    .row-result.bad { color: var(--coral); }
+    .row-result.good { color: var(--green); }
+
+    .split-sections { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; }
+    .flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 19px; }
+    .flow-step { position: relative; padding: 0 14px 0 0; }
+    .flow-step:not(:last-child)::after { content: ""; position: absolute; left: 31px; right: 8px; top: 13px; border-top: 1px solid #b9c7be; }
+    .step-index { position: relative; z-index: 1; width: 27px; height: 27px; display: grid; place-items: center; border: 1px solid #a9c1b3; border-radius: 50%; color: var(--green); background: var(--paper); font: 12px var(--serif); }
+    .flow-step strong { display: block; margin-top: 10px; font-size: 12px; }
+    .flow-step span { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; line-height: 1.5; }
+    .standards { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; margin-top: 14px; }
+    .standard { display: flex; gap: 9px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+    .standard-mark { flex: 0 0 18px; height: 18px; display: grid; place-items: center; border: 1px solid #9cbba8; border-radius: 50%; color: var(--green); font-size: 10px; }
+    .standard strong { display: block; font-size: 11px; }
+    .standard small { display: block; color: var(--muted); font-size: 10px; line-height: 1.45; }
+
+    .lower-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(280px, .9fr); gap: 48px; }
+    .details-list { border-top: 1px solid var(--line); }
+    details { border-bottom: 1px solid var(--line); }
+    summary { position: relative; min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 10px 5px 10px 0; cursor: pointer; list-style: none; font-weight: 700; font-size: 12px; }
+    summary::-webkit-details-marker { display: none; }
+    summary::after { content: "+"; color: var(--green); font: 20px/1 var(--serif); }
+    details[open] summary::after { content: "−"; }
+    .detail-body { padding: 0 20px 15px 0; color: var(--muted); font-size: 11px; line-height: 1.8; }
+    .detail-body ul { margin: 0; padding-left: 17px; }
+    .detail-body li + li { margin-top: 5px; }
+    .version-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    .version-table th, .version-table td { padding: 10px 7px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    .version-table th { color: var(--muted); font-size: 10px; font-weight: 600; }
+    .version-table td:first-child { color: var(--green); font-weight: 700; white-space: nowrap; }
+    .privacy-note { margin-top: 18px; padding: 12px 14px; border-left: 2px solid var(--gold); background: #f8f3e6; color: #66552f; font-size: 11px; }
+    footer { display: flex; justify-content: space-between; gap: 20px; padding-top: 20px; color: var(--muted); font-size: 10px; }
+
+    @media (max-width: 960px) {
+      .topbar-inner { padding: 0 24px; }
+      main { padding: 28px 24px 56px; }
+      .workbench, .split-sections, .lower-grid { grid-template-columns: 1fr; }
+      .case-pane + .case-pane { border-left: 0; border-top: 1px solid var(--line); }
+      .split-sections, .lower-grid { gap: 28px; }
+    }
+    @media (max-width: 640px) {
+      body { font-size: 13px; }
+      .topbar-inner { min-height: 58px; padding: 0 16px; flex-wrap: wrap; gap: 0 14px; }
+      .brand-sub, .top-meta { display: none; }
+      .top-nav { gap: 16px; overflow-x: auto; }
+      .top-nav a { min-height: 44px; white-space: nowrap; }
+      main { padding: 23px 16px 40px; }
+      .page-head { align-items: flex-start; flex-direction: column; gap: 12px; }
+      .head-right { align-items: flex-start; }
+      h1 { font-size: 29px; }
+      h2 { font-size: 21px; }
+      .metrics { grid-template-columns: 1fr 1fr; row-gap: 17px; }
+      .metric { min-height: 68px; padding: 2px 12px; }
+      .metric:nth-child(odd) { padding-left: 0; border-left: 0; }
+      .metric-value { font-size: 26px; }
+      .section { padding: 23px 0; }
+      .section-head { align-items: flex-start; flex-direction: column; }
+      .case-pane { padding: 17px 15px; }
+      .case-question { font-size: 19px; }
+      .case-row { grid-template-columns: 62px minmax(0,1fr) 66px; gap: 8px; padding: 12px 3px; }
+      .row-domain { display: none; }
+      .row-question { font-size: 13px; }
+      .row-id, .row-result { font-size: 10px; }
+      .flow { grid-template-columns: 1fr 1fr; gap: 18px 12px; }
+      .flow-step:not(:last-child)::after { display: none; }
+      .standards { grid-template-columns: 1fr; }
+      footer { flex-direction: column; gap: 6px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="#overview" aria-label="循证台首页">
+        <span class="brand-mark" aria-hidden="true">证</span>
+        <span>循证台 <span class="brand-sub">LEGAL AI EVALUATION</span></span>
+      </a>
+      <nav class="top-nav" aria-label="主导航">
+        <a class="active" href="#overview">评测概览</a>
+        <a href="#cases">Bad Case</a>
+        <a href="#quality">数据质量</a>
+        <a href="#versions">版本记录</a>
+      </nav>
+      <span class="top-meta">法律 RAG · 演示环境</span>
+    </div>
+  </header>
+
+  <main id="overview">
+    <section class="page-head" aria-labelledby="page-title">
+      <div>
+        <p class="eyebrow">Evaluation / 01</p>
+        <h1 id="page-title">法律 RAG 评测工作台</h1>
+        <p class="subtitle">从证据召回到答案引用，逐项检查模型是否言之有据。</p>
+      </div>
+      <div class="head-right">
+        <span class="demo-label">项目指标摘要 · 非实时数据</span>
+        <span>数据基线：10 个领域 / 1,300+ 条法条与判例</span>
+      </div>
+    </section>
+
+    <section class="metrics" aria-label="项目关键指标">
+      <article class="metric">
+        <div class="metric-label">Recall@k <a class="metric-help" href="#metric-notes" title="相关证据进入前 k 个检索结果的比例">?</a></div>
+        <div class="metric-value">85% <span class="delta">+20pp</span></div>
+        <div class="metric-note">基线 65% · 混合检索与重排后</div>
+      </article>
+      <article class="metric">
+        <div class="metric-label">引用准确率</div>
+        <div class="metric-value">+20 <small>个百分点</small></div>
+        <div class="metric-note">项目简历记录的提升幅度</div>
+      </article>
+      <article class="metric">
+        <div class="metric-label">幻觉率</div>
+        <div class="metric-value">−15% <small>简历原始口径</small></div>
+        <div class="metric-note">相对下降或百分点需以项目记录确认</div>
+      </article>
+      <article class="metric">
+        <div class="metric-label">知识覆盖</div>
+        <div class="metric-value">10 <small>个领域</small></div>
+        <div class="metric-note">1,300+ 条法规与判例</div>
+      </article>
+    </section>
+
+    <section class="section" aria-labelledby="sample-title">
+      <div class="section-head">
+        <div>
+          <p class="section-kicker">CASE REVIEW / DEMO-014</p>
+          <h2 id="sample-title">引用是否真正支持结论？</h2>
+          <p class="section-note">演示样例 · 以核验后的正式法规文本为准，不构成法律意见</p>
+        </div>
+        <span class="status fail">需复核 · 引用与结论不匹配</span>
+      </div>
+      <div class="workbench">
+        <article class="case-pane">
+          <div class="case-meta"><span class="case-id">问题与证据</span><span>民事 · 合同效力 · 样例数据</span></div>
+          <p class="case-question">“只要合同里有违约金条款，法院就一定会按约定金额判吗？”</p>
+          <p class="data-label">检索证据 · 候选 01</p>
+          <blockquote>
+            当事人可以约定一方违约时应当根据违约情况向对方支付一定数额的违约金，也可以约定因违约产生的损失赔偿额的计算方法。
+            <span class="citation">《中华人民共和国民法典》第五百八十五条 · 条文核验状态：演示引用</span>
+          </blockquote>
+          <div class="trace" aria-label="评测元数据">
+            <span>证据相关</span><span>版本待核验</span><span>来源可追溯</span>
+          </div>
+        </article>
+        <article class="case-pane">
+          <div class="case-meta"><span class="case-id">模型回答</span><span>生成版本：demo-v0.3</span></div>
+          <p class="data-label" style="margin-top:18px">回答片段</p>
+          <div class="answer">
+            <p>“是的，合同约定的违约金具有约束力，发生违约后法院应当按照合同约定金额判决。”</p>
+            <p><mark>问题：将一般约定规则绝对化，忽略违约金调整规则及具体事实条件。</mark></p>
+          </div>
+          <p class="data-label" style="margin-top:18px">人工判定</p>
+          <div class="trace">
+            <span class="bad-tag">过度确定</span><span class="bad-tag">关键例外遗漏</span><span class="bad-tag">结论支持不足</span>
+          </div>
+          <div class="case-controls" aria-label="静态示例状态">
+            <a class="control-label primary" href="#review-note">查看判定依据</a>
+            <span class="control-label" title="此为只读演示页面">只读样例</span>
+          </div>
+        </article>
+      </div>
+      <details id="review-note" style="margin-top:10px">
+        <summary>展开人工判定依据与复核要点</summary>
+        <div class="detail-body">
+          <ul>
+            <li>核验引用条文的当前有效版本及其与问题的相关性。</li>
+            <li>区分“允许当事人约定”与“任何情况下均按约定金额判决”，避免把规则扩张为绝对结论。</li>
+            <li>检查回答是否提示需要结合实际损失、约定内容和个案事实进一步判断。本样例仅用于展示评测结构。</li>
+          </ul>
+        </div>
+      </details>
+    </section>
+
+    <section class="section" id="cases" aria-labelledby="cases-title">
+      <div class="section-head">
+        <div>
+          <p class="section-kicker">ERROR ANALYSIS / 02</p>
+          <h2 id="cases-title">Bad Case 队列</h2>
+          <p class="section-note">按错误类型查看演示样本；下列问题均为静态示意，并非真实用户数据。</p>
+        </div>
+        <div class="filter-row" role="group" aria-label="按错误类型筛选">
+          <input type="radio" name="case-filter" id="filter-all" checked><label for="filter-all">全部</label>
+          <input type="radio" name="case-filter" id="filter-cite"><label for="filter-cite">引用错误</label>
+          <input type="radio" name="case-filter" id="filter-time"><label for="filter-time">时效性</label>
+          <input type="radio" name="case-filter" id="filter-hallucination"><label for="filter-hallucination">无依据生成</label>
+        </div>
+      </div>
+      <div class="cases" aria-live="polite">
+        <article class="case-row" data-kind="cite">
+          <span class="row-id">DEMO-014</span><span class="row-question">违约金是否任何情况下都按约定判？</span><span class="row-domain">合同纠纷</span><span class="row-result bad">引用不支持</span>
+        </article>
+        <article class="case-row" data-kind="time">
+          <span class="row-id">DEMO-021</span><span class="row-question">某旧版规定在当前日期是否仍适用？</span><span class="row-domain">劳动争议</span><span class="row-result bad">版本待核验</span>
+        </article>
+        <article class="case-row" data-kind="hallucination">
+          <span class="row-id">DEMO-032</span><span class="row-question">请给出支持该观点的最高法指导案例。</span><span class="row-domain">侵权责任</span><span class="row-result bad">案例未找到</span>
+        </article>
+        <article class="case-row" data-kind="cite">
+          <span class="row-id">DEMO-038</span><span class="row-question">该条款的但书是否改变一般适用条件？</span><span class="row-domain">民商事</span><span class="row-result good">证据充分</span>
+        </article>
+      </div>
+      <noscript><p class="section-note">当前筛选控件依赖 CSS 状态；若浏览器不支持相关 CSS，将显示全部演示样本。</p></noscript>
+    </section>
+
+    <section class="section split-sections" id="quality">
+      <article aria-labelledby="flow-title">
+        <p class="section-kicker">DATA PIPELINE / 03</p>
+        <h2 id="flow-title">从来源到回归评测</h2>
+        <p class="section-note">每一步保留来源与处理记录，错误才能回到具体数据环节。</p>
+        <div class="flow">
+          <div class="flow-step"><span class="step-index">01</span><strong>权威采集</strong><span>来源、许可、采集日期登记</span></div>
+          <div class="flow-step"><span class="step-index">02</span><strong>清洗结构化</strong><span>去重、条款切分、元数据校验</span></div>
+          <div class="flow-step"><span class="step-index">03</span><strong>标注与质检</strong><span>双标抽检、争议仲裁、脱敏</span></div>
+          <div class="flow-step"><span class="step-index">04</span><strong>评测迭代</strong><span>Bad Case 归因、版本回归</span></div>
+        </div>
+      </article>
+      <article aria-labelledby="standards-title">
+        <p class="section-kicker">QUALITY GATES / 04</p>
+        <h2 id="standards-title">入库质量标准</h2>
+        <p class="section-note">阈值按业务风险与样本类型设定，以下是检查维度。</p>
+        <div class="standards">
+          <div class="standard"><span class="standard-mark">✓</span><span><strong>来源可信</strong><small>权威出处可追溯，使用依据明确</small></span></div>
+          <div class="standard"><span class="standard-mark">✓</span><span><strong>内容准确</strong><small>条号、文号、日期与原文一致</small></span></div>
+          <div class="standard"><span class="standard-mark">✓</span><span><strong>时效可判</strong><small>现行、修订、失效状态清楚</small></span></div>
+          <div class="standard"><span class="standard-mark">✓</span><span><strong>结构完整</strong><small>条款、例外及上下文不被截断</small></span></div>
+          <div class="standard"><span class="standard-mark">✓</span><span><strong>标注一致</strong><small>边界案例有规范并经抽样复核</small></span></div>
+          <div class="standard"><span class="standard-mark">✓</span><span><strong>全程可追溯</strong><small>版本、变更原因与审核状态可查</small></span></div>
+        </div>
+      </article>
+    </section>
+
+    <section class="section lower-grid" id="versions">
+      <article aria-labelledby="taxonomy-title">
+        <p class="section-kicker">REVIEW PLAYBOOK / 05</p>
+        <h2 id="taxonomy-title">评测检查清单</h2>
+        <p class="section-note">按问题根因分类，避免把所有错误都归到生成模型。</p>
+        <div class="details-list">
+          <details open>
+            <summary>检索与排序</summary>
+            <div class="detail-body"><ul><li>正确法条或案例是否进入 Top-k？</li><li>法条编号、关键词和语义检索是否互补？重排是否改变了正确证据位置？</li></ul></div>
+          </details>
+          <details>
+            <summary>答案与引用</summary>
+            <div class="detail-body"><ul><li>答案是否被证据支持，是否遗漏但书、条件或适用边界？</li><li>法规名称、条号、版本和案例来源是否真实且与论断对应？</li></ul></div>
+          </details>
+          <details>
+            <summary>时效、安全与拒答</summary>
+            <div class="detail-body"><ul><li>问题涉及的时间点是否匹配有效版本？</li><li>证据不足时是否说明限制、补问或拒答？是否保护个人信息？</li></ul></div>
+          </details>
+        </div>
+      </article>
+      <article aria-labelledby="version-title">
+        <p class="section-kicker">DATA GOVERNANCE / 06</p>
+        <h2 id="version-title">版本与合规</h2>
+        <p class="section-note">演示用版本轨迹，非实际系统变更日志。</p>
+        <table class="version-table">
+          <thead><tr><th>版本</th><th>变更内容</th><th>状态</th></tr></thead>
+          <tbody>
+            <tr><td>KB-demo.03</td><td>增加时效性与引用支持检查项</td><td>演示</td></tr>
+            <tr><td>KB-demo.02</td><td>调整法律条款切分说明</td><td>演示</td></tr>
+            <tr><td>KB-demo.01</td><td>建立来源与元数据字段</td><td>演示</td></tr>
+          </tbody>
+        </table>
+        <p class="privacy-note">隐私原则：最小必要采集、授权核验、敏感字段脱敏、权限控制与留存期限管理。此页面不收集或上传任何数据。</p>
+      </article>
+    </section>
+
+    <section class="section" id="metric-notes" aria-labelledby="metric-notes-title">
+      <p class="section-kicker">METRIC NOTES / 07</p>
+      <h2 id="metric-notes-title">指标口径</h2>
+      <p class="section-note">页面摘要转录自项目方案中的简历结果。完整评测仍需核对样本集、Top-k、分母和实验版本。</p>
+      <div class="standards" style="max-width:900px">
+        <div class="standard"><span class="standard-mark">i</span><span><strong>Recall@k</strong><small>相关证据出现在前 k 个检索结果中的比例；需记录 k 与 gold evidence 口径。</small></span></div>
+        <div class="standard"><span class="standard-mark">i</span><span><strong>引用准确率</strong><small>引用内容真实且支持相应论断；应明确评测样本和判断粒度。</small></span></div>
+        <div class="standard"><span class="standard-mark">i</span><span><strong>幻觉率</strong><small>方案记录下降 15%，但相对下降或百分点口径未注明，需以原始项目记录确认。</small></span></div>
+        <div class="standard"><span class="standard-mark">i</span><span><strong>演示数据边界</strong><small>页面样例和版本均为说明性内容，不代表线上系统或真实案件。</small></span></div>
+      </div>
+    </section>
+
+    <footer>
+      <span>循证台 · 法律 RAG 评测工作台 MVP</span>
+      <span>静态演示页面 · 不提供法律意见、模型调用或数据存储</span>
+    </footer>
+  </main>
+  <style>
+    .section:has(#filter-all:checked) .case-row { display: grid; }
+    .section:has(#filter-cite:checked) .case-row:not([data-kind="cite"]),
+    .section:has(#filter-time:checked) .case-row:not([data-kind="time"]),
+    .section:has(#filter-hallucination:checked) .case-row:not([data-kind="hallucination"]) { display: none; }
+    .section:has(#filter-cite:checked) .case-row[data-kind="cite"],
+    .section:has(#filter-time:checked) .case-row[data-kind="time"],
+    .section:has(#filter-hallucination:checked) .case-row[data-kind="hallucination"] { display: grid; }
+    .filter-row { position: relative; }
+    #review-note { cursor: default; }
+    #review-note summary { cursor: pointer; }
+    #review-note[open] { border-bottom: 1px solid var(--line); }
+  </style>
+</body>
+</html>
